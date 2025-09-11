@@ -1,49 +1,47 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-#adding security
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from typing import Optional
 
+# ---------------- Database setup ----------------
 DATABASE_URL = "mysql+mysqlconnector://root:root@localhost/fastapi_db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
-# SQLAlchemy Model
+# SQLAlchemy model
 class ItemModel(Base):
     __tablename__ = "items"
     id = Column(Integer, primary_key=True, index=True)
-    CALLING_MSISDN = Column(Float, nullable=False)
-    STAFF_NAME = Column(String(100), nullable=False)
-    CHANNELS = Column(String(100), nullable=False)
-    DATABASE2 = Column(String(100), default=True)
-    LOGS2 = Column(String (16000), default=True)
+    name = Column(String(100), nullable=False)
+    price = Column(Float, nullable=False)
+    in_stock = Column(Boolean, default=True)
 
-# Creating them tables
 Base.metadata.create_all(bind=engine)
 
-#authsetup
-SECRET_KEY = "supersecretkey123"
+# ---------------- Auth setup ----------------
+SECRET_KEY = "supersecretkey123"   # ⚠️ change in production
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+# fake user storage (replace later with MySQL if you want)
 fake_users_db = {
     "daniel": {
         "username": "daniel",
-        "hashed_password": pwd_context.hash("taskHass!"),
+        "hashed_password": pwd_context.hash("mypassword123"),
     }
 }
 
-# Pydantic Model
+# Pydantic models
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -52,13 +50,11 @@ class User(BaseModel):
     username: str
 
 class Item(BaseModel):
-    CALLING_MSISDN: float
-    STAFF_NAME: str
-    CHANNELS: str
-    DATABASE2: str
-    LOGS2: str
+    name: str
+    price: float
+    in_stock: bool = True
 
-
+# auth utils
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -75,7 +71,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials"
+    )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
@@ -88,9 +87,10 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     return user
 
+# ---------------- FastAPI app ----------------
 app = FastAPI()
 
-#Auth route
+# Auth route
 @app.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
@@ -99,31 +99,24 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     access_token = create_access_token(data={"sub": user["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
-#CRUD routes with authentication
+# CRUD routes with authentication
 @app.post("/items/", response_model=Item)
 def create_item(item: Item, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
-    db_item = ItemModel(CALLING_MSISDN=item.CALLING_MSISDN, STAFF_NAME=item.STAFF_NAME, CHANNELS=item.CHANNELS, DATABASE2=item.DATABASE2, LOGS2=item.LOGS2)
+    db_item = ItemModel(name=item.name, price=item.price, in_stock=item.in_stock)
     db.add(db_item)
     db.commit()
     db.refresh(db_item)
     db.close()
     return item
 
-# GET root items
-@app.get("/")
-def get_root(current_user: User = Depends(get_current_user)):
-    return {"message": "This is your root homepage!"}
-
-# GET all items
-@app.get("items/")
+@app.get("/items/")
 def get_items(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     items = db.query(ItemModel).all()
     db.close()
     return items
 
-# GET a single item
 @app.get("/items/{item_id}")
 def read_item(item_id: int, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
