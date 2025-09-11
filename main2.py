@@ -18,12 +18,13 @@ Base = declarative_base()
 # SQLAlchemy Model
 class ItemModel(Base):
     __tablename__ = "items"
-    id = Column(Integer, primary_key=True, index=True)
-    CALLING_MSISDN = Column(Float, nullable=False)
+    # id = Column(Integer, primary_key=True, index=True)
+    # id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    CALLING_MSISDN = Column(Float, primary_key=True, nullable=False)
     STAFF_NAME = Column(String(100), nullable=False)
     CHANNELS = Column(String(100), nullable=False)
-    DATABASE2 = Column(String(100), default=True)
-    LOGS2 = Column(String (16000), default=True)
+    DATABASE2 = Column(String(100), default="")
+    LOGS2 = Column(String (16000), default="")
 
 # Creating them tables
 Base.metadata.create_all(bind=engine)
@@ -35,6 +36,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 
 fake_users_db = {
     "daniel": {
@@ -116,7 +118,7 @@ def get_root(current_user: User = Depends(get_current_user)):
     return {"message": "This is your root homepage!"}
 
 # GET all items
-@app.get("items/")
+@app.get("/items/")
 def get_items(current_user: User = Depends(get_current_user)):
     db = SessionLocal()
     items = db.query(ItemModel).all()
@@ -124,10 +126,10 @@ def get_items(current_user: User = Depends(get_current_user)):
     return items
 
 # GET a single item
-@app.get("/items/{item_id}")
-def read_item(item_id: int, current_user: User = Depends(get_current_user)):
+@app.get("/items/{calling_msisdn}")
+def read_item(calling_msisdn: float, current_user: User = Depends(get_current_user)):
     db = SessionLocal()
-    item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+    item = db.query(ItemModel).filter(ItemModel.CALLING_MSISDN == calling_msisdn).first()
     db.close()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
